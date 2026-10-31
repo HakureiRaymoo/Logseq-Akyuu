@@ -1,5 +1,8 @@
 # Logseq Akyuu
 
+[![ci](https://github.com/HakureiRaymoo/Logseq-Akyuu/actions/workflows/ci.yml/badge.svg)](https://github.com/HakureiRaymoo/Logseq-Akyuu/actions/workflows/ci.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 **Akyuu** 是给 Logseq 用的 AI 助手 —— 面板里它自称 Akyuu，插件全名 Logseq Akyuu。它把 [obsidian-copilot](https://github.com/logancyang/obsidian-copilot) 的核心体验搬到了 Logseq：**侧边对话面板 + 自动带上图谱上下文 + 提示词快捷改写 + 流式输出 + 多模型供应商**，并且能**真的动手改你的笔记**（带确认），**会话存成图谱目录里的文件**。
 
 ![Logseq Akyuu 面板](preview-light.png)

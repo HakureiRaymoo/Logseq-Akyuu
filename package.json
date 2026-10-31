@@ -3,9 +3,17 @@
   "version": "0.2.1",
   "description": "Akyuu — an AI assistant for Logseq that can actually edit your graph: tool calling (create/insert/update/move/tag/delete blocks), graph-aware retrieval, and sessions saved inside your graph folder",
   "main": "index.html",
-  "author": "you",
+  "author": "KayarinHA (https://github.com/HakureiRaymoo)",
   "license": "MIT",
-  "keywords": ["logseq", "logseq-plugin", "akyuu", "ai", "llm", "deepseek", "chatgpt"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HakureiRaymoo/Logseq-Akyuu.git"
+  },
+  "homepage": "https://github.com/HakureiRaymoo/Logseq-Akyuu#readme",
+  "bugs": {
+    "url": "https://github.com/HakureiRaymoo/Logseq-Akyuu/issues"
+  },
+  "keywords": ["logseq", "logseq-plugin", "akyuu", "ai", "llm", "deepseek", "chatgpt", "tool-calling"],
   "logseq": {
     "id": "logseq-akyuu",
     "title": "Logseq Akyuu",
