@@ -747,6 +747,7 @@
     const q = String(query || "").trim();
     const items = [];
     const seen = new Set();
+    const seenPages = new Set();
 
     if (!q) {
       const b = await global.logseq.Editor.getCurrentBlock().catch(() => null);
@@ -756,13 +757,18 @@
       }
       if (state.current.page && state.current.page.name) {
         items.push({ kind: "page", name: state.current.page.name });
+        seenPages.add(state.current.page.name);
       }
     }
 
     const pages = await allPages();
     const lower = q.toLowerCase();
     const pageHits = (q ? pages.filter((p) => p.toLowerCase().includes(lower)) : pages).slice(0, q ? 4 : 3);
-    pageHits.forEach((name) => items.push({ kind: "page", name: name }));
+    pageHits.forEach((name) => {
+      if (seenPages.has(name)) return; // 当前页 / 已经出现过的页面不重复列
+      seenPages.add(name);
+      items.push({ kind: "page", name: name });
+    });
 
     if (q.length >= 1) {
       const blocks = await CP.retrieval.searchBlocks(q, 8);
