@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <title>Logseq Akyuu · UI 预览</title>
+    <link rel="stylesheet" href="src/styles.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <script>
+      // 一个假的 logseq SDK，用来在没有 Logseq 的环境里跑通面板 UI
+      const theme = new URLSearchParams(location.search).get("theme") || "light";
+      window.__files = {};
+      function memStorage() {
+        return {
+          getItem: async (k) => (k in window.__files ? window.__files[k] : null),
+          setItem: async (k, v) => {
+            window.__files[k] = v;
+            return true;
+          },
+          removeItem: async (k) => {
+            delete window.__files[k];
+          },
+          allKeys: async () => Object.keys(window.__files),
+        };
+      }
+      window.logseq = {
+        settings: {
+          provider: "deepseek",
+          model: "deepseek-chat",
+          language: "zh",
+          panelWidth: 460,
+          smartContext: true,
+          enableTools: true,
+          toolPolicy: "confirm",
+        },
+        updateSettings: (patch) => Object.assign(window.logseq.settings, patch),
+        useSettingsSchema: () => {},
+        onSettingsChanged: () => {},
+        Editor: {
+          getCurrentPage: async () => ({ name: "项目复盘 · 2026 Q3" }),
+          getCurrentBlock: async () => ({ uuid: "b1", content: "周会上提到的三个风险点还没写进来" }),
+          getSelectedBlocks: async () => [],
+          getAllPages: async () => [{ name: "项目复盘 · 2026 Q3" }, { name: "OKR 2026" }, { name: "读书笔记" }],
+          getPage: async () => null,
+          getPageBlocksTree: async () => [],
+          insertBlock: async () => ({ uuid: "x" }),
+          appendBlockInPage: async () => ({ uuid: "x" }),
+          createPage: async (name) => ({ name: name }),
+          deletePage: async () => {},
+          removeBlock: async () => {},
+          moveBlock: async () => {},
+          registerSlashCommand: () => {},
+          registerBlockContextMenuItem: () => {},
+          registerHighlightContextMenuItem: () => {},
+        },
+        App: {
+          getUserConfigs: async () => ({ preferredThemeMode: theme }),
+          onThemeModeChanged: () => {},
+          registerCommandPalette: () => {},
+          registerPageMenuItem: () => {},
+          getCurrentGraph: async () => ({ name: "手帐", path: "D:\\notes\\手帐" }),
+        },
+        UI: { showMsg: (m) => console.log("[toast]", m) },
+        Assets: { makeSandboxStorage: async () => memStorage() },
+        FileStorage: memStorage(),
+        showMainUI: () => {},
+        hideMainUI: () => {},
+        setMainUIInlineStyle: () => {},
+        showSettingsUI: () => {},
+        provideStyle: () => {},
+        provideModel: () => {},
+        provideUI: () => {},
+        ready: (fn) => fn(),
+      };
+
+      const messages = [
+        { id: 1, role: "user", content: "把这次复盘的三个风险写成新页面，顺便给当前块加个标签。" },
+        {
+          id: 2,
+          role: "assistant",
+          content:
+            "好，我准备做两个改动 —— **新建**一个风险清单页面，并给当前块加 `#复盘` 标签。确认后我再动手。",
+        },
+        {
+          id: 3,
+          role: "assistant",
+          kind: "tool",
+          state: "pending",
+          results: [],
+          calls: [
+            {
+              name: "create_page",
+              title: "新建页面",
+              preview:
+                "新建页面《2026 Q3 风险清单》，并写入 3 个块：\n  · 单点依赖：只有一人熟悉发布流程\n  · 风险清单没有 owner\n  · 跨团队依赖导致 2 个里程碑延期",
+            },
+            {
+              name: "add_tags",
+              title: "加标签",
+              preview: "给块「周会上提到的三个风险点还没写进来」加标签：#复盘",
+            },
+          ],
+        },
+      ];
+
+      CP.chatPrompts = [
+        { id: "p-sum", label: "总结这一页", desc: "要点 + 一句话结论", text: "请总结当前页面的要点。" },
+        { id: "p-todo", label: "这一页有什么待办", desc: "提取可执行项", text: "整理成 - [ ] 清单。" },
+        { id: "p-link", label: "找我漏掉的关联", desc: "发现跨页联系", text: "指出我可能忽略的跨页关联。" },
+      ];
+    </script>
+
+    <script src="src/md.js"></script>
+    <script src="src/store.js"></script>
+    <script src="src/llm.js"></script>
+    <script src="src/retrieval.js"></script>
+    <script src="src/context.js"></script>
+    <script src="src/tools.js"></script>
+    <script src="src/workspace.js"></script>
+    <script src="src/agent.js"></script>
+    <script src="src/panel.js"></script>
+    <script>
+      (async () => {
+        await CP.panel.mount();
+        await CP.panel.restore();
+        CP.panel.state.messages = messages;
+        CP.panel.render();
+        CP.panel.open(); // 触发 refreshContext / refreshWorkspace
+        CP.panel.state.pinned.push({ name: "OKR 2026" });
+        CP.panel.refreshContext();
+
+        // 顺带塞两个会话文件，让「历史会话」里有东西（也验证 .md 落盘）
+        await CP.ws.saveSession({ id: "20261101-0912-01", title: "把这次复盘写成周报", messages: messages.slice(0, 2) });
+        await CP.ws.saveSession({ id: "20261028-2045-01", title: "帮我找这个季度的跨页关联", messages: messages.slice(0, 1) });
+
+        if (new URLSearchParams(location.search).get("mention")) {
+          const input = document.querySelector("#cp-input");
+          input.focus();
+          input.value = "@项目";
+          input.setSelectionRange(input.value.length, input.value.length);
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+        if (new URLSearchParams(location.search).get("sessions")) {
+          CP.panel.toggleSessions();
+        }
+      })();
+    </script>
+  </body>
+</html>

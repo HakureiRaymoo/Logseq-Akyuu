@@ -1,0 +1,1070 @@
+/*
+ * 配色：优先用宿主 Logseq 的 CSS 变量（panel.js 会把它们搬进 iframe），
+ * 读不到（跨域）或变量缺失时，回落到下面这套内置亮/暗色板。
+ */
+:root {
+  color-scheme: light;
+  --cp-bg: var(--ls-primary-background-color, #ffffff);
+  --cp-bg-soft: var(--ls-secondary-background-color, #f5f6f8);
+  --cp-bg-elev: var(--ls-primary-background-color, #ffffff);
+  --cp-border: var(--ls-border-color, rgba(15, 23, 42, 0.1));
+  --cp-border-strong: var(--ls-border-color, rgba(15, 23, 42, 0.16));
+  --cp-text: var(--ls-primary-text-color, #1f2937);
+  --cp-muted: var(--ls-secondary-text-color, #6b7280);
+  --cp-accent: var(--ls-link-text-color, #6d5efc);
+  --cp-accent-soft: rgba(109, 94, 252, 0.1);
+  --cp-accent-soft: color-mix(in srgb, var(--cp-accent) 14%, transparent);
+  --cp-user-bg: var(--ls-tertiary-background-color, #eef0ff);
+  --cp-code-bg: var(--ls-code-block-background-color, #f3f4f6);
+  --cp-danger: var(--ls-error-text-color, #dc2626);
+  --cp-danger-soft: rgba(220, 38, 38, 0.08);
+  --cp-danger-soft: color-mix(in srgb, var(--cp-danger) 12%, transparent);
+  --cp-shadow: 0 18px 50px rgba(15, 23, 42, 0.18);
+  --cp-radius: 14px;
+  --cp-font: var(--ls-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", sans-serif);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --cp-bg: var(--ls-primary-background-color, #1b1e24);
+  --cp-bg-soft: var(--ls-secondary-background-color, #23262e);
+  --cp-bg-elev: var(--ls-primary-background-color, #22252c);
+  --cp-border: var(--ls-border-color, rgba(255, 255, 255, 0.1));
+  --cp-border-strong: var(--ls-border-color, rgba(255, 255, 255, 0.18));
+  --cp-text: var(--ls-primary-text-color, #e6e8ec);
+  --cp-muted: var(--ls-secondary-text-color, #9aa1ad);
+  --cp-accent: var(--ls-link-text-color, #a78bfa);
+  --cp-accent-soft: rgba(167, 139, 250, 0.14);
+  --cp-accent-soft: color-mix(in srgb, var(--cp-accent) 18%, transparent);
+  --cp-user-bg: var(--ls-tertiary-background-color, #2b3040);
+  --cp-code-bg: var(--ls-code-block-background-color, #12141a);
+  --cp-danger: var(--ls-error-text-color, #f87171);
+  --cp-danger-soft: rgba(248, 113, 113, 0.12);
+  --cp-danger-soft: color-mix(in srgb, var(--cp-danger) 16%, transparent);
+  --cp-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: transparent;
+}
+
+body {
+  font-family: var(--cp-font);
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--cp-text);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ------------------------------- 面板骨架 ------------------------------- */
+
+.cp-root {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--cp-bg);
+  border: 1px solid var(--cp-border);
+  border-radius: var(--cp-radius);
+  box-shadow: var(--cp-shadow);
+  overflow: hidden;
+}
+
+.cp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--cp-border);
+  background: var(--cp-bg);
+  flex: 0 0 auto;
+  cursor: grab;
+}
+
+.cp-head:active {
+  cursor: grabbing;
+}
+
+.cp-head button,
+.cp-head select {
+  cursor: pointer;
+}
+
+body.cp-dragging,
+body.cp-dragging * {
+  user-select: none !important;
+}
+
+/* 左边缘改宽、下边缘改高 */
+.cp-resize-x {
+  position: absolute;
+  left: 0;
+  top: 14px;
+  bottom: 14px;
+  width: 6px;
+  cursor: ew-resize;
+  z-index: 6;
+}
+
+.cp-resize-y {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 0;
+  height: 6px;
+  cursor: ns-resize;
+  z-index: 6;
+}
+
+.cp-resize-x:hover,
+.cp-resize-y:hover {
+  background: var(--cp-accent-soft);
+}
+
+.cp-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cp-logo {
+  color: var(--cp-accent);
+  font-size: 15px;
+}
+
+.cp-title {
+  font-weight: 650;
+  letter-spacing: 0.2px;
+}
+
+.cp-model {
+  font-size: 11px;
+  color: var(--cp-muted);
+  background: var(--cp-bg-soft);
+  border: 1px solid var(--cp-border);
+  padding: 1px 7px;
+  border-radius: 999px;
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cp-head-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.cp-icon {
+  border: none;
+  background: transparent;
+  color: var(--cp-muted);
+  cursor: pointer;
+  font-size: 13px;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  line-height: 1;
+}
+
+.cp-icon:hover {
+  background: var(--cp-bg-soft);
+  color: var(--cp-text);
+}
+
+/* ------------------------------- 上下文条 ------------------------------- */
+
+.cp-ctx {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--cp-border);
+  background: var(--cp-bg-soft);
+  flex: 0 0 auto;
+  max-height: 96px;
+  overflow-y: auto;
+}
+
+.cp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  line-height: 1;
+  padding: 5px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--cp-border);
+  background: var(--cp-bg);
+  color: var(--cp-text);
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cp-chip:hover {
+  border-color: var(--cp-border-strong);
+}
+
+.cp-chip.off {
+  opacity: 0.42;
+  text-decoration: line-through;
+}
+
+.cp-chip.pinned {
+  border-color: var(--cp-accent);
+  background: var(--cp-accent-soft);
+}
+
+.cp-chip.accent {
+  background: var(--cp-accent-soft);
+  border-color: transparent;
+  cursor: default;
+}
+
+.cp-chip.ghost {
+  background: transparent;
+  border-style: dashed;
+  color: var(--cp-muted);
+}
+
+.cp-chip-x {
+  opacity: 0.5;
+  font-size: 10px;
+}
+
+.cp-chip:hover .cp-chip-x {
+  opacity: 0.9;
+}
+
+/* ------------------------------- 消息区 ------------------------------- */
+
+.cp-msgs {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 14px 12px 6px;
+  scroll-behavior: smooth;
+}
+
+.cp-welcome-hint {
+  color: var(--cp-muted);
+  text-align: center;
+  padding: 40px 12px;
+  font-size: 12.5px;
+}
+
+.cp-msg {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+  align-items: flex-start;
+}
+
+.cp-msg.user {
+  justify-content: flex-end;
+}
+
+.cp-bubble {
+  background: var(--cp-user-bg);
+  border-radius: 12px 12px 4px 12px;
+  padding: 8px 11px;
+  max-width: 86%;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.cp-avatar {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  background: var(--cp-accent-soft);
+  color: var(--cp-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.cp-body {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* ------------------------------- Markdown ------------------------------- */
+
+.cp-md {
+  word-break: break-word;
+}
+
+.cp-md p {
+  margin: 0 0 8px;
+}
+
+.cp-md p:last-child {
+  margin-bottom: 0;
+}
+
+.cp-md h3,
+.cp-md h4,
+.cp-md h5,
+.cp-md h6 {
+  margin: 12px 0 6px;
+  line-height: 1.35;
+  font-weight: 650;
+}
+
+.cp-md h3 {
+  font-size: 15px;
+}
+.cp-md h4 {
+  font-size: 14px;
+}
+.cp-md h5,
+.cp-md h6 {
+  font-size: 13.5px;
+}
+
+.cp-md ul,
+.cp-md ol {
+  margin: 4px 0 8px;
+  padding-left: 20px;
+}
+
+.cp-md li {
+  margin: 2px 0;
+}
+
+.cp-md a {
+  color: var(--cp-accent);
+  text-decoration: none;
+}
+
+.cp-md a:hover {
+  text-decoration: underline;
+}
+
+.cp-md blockquote {
+  margin: 6px 0;
+  padding: 4px 10px;
+  border-left: 3px solid var(--cp-border-strong);
+  color: var(--cp-muted);
+}
+
+.cp-md code {
+  background: var(--cp-code-bg);
+  border-radius: 5px;
+  padding: 1px 5px;
+  font-size: 12px;
+  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+}
+
+.cp-md hr {
+  border: none;
+  border-top: 1px solid var(--cp-border);
+  margin: 10px 0;
+}
+
+.cp-code {
+  background: var(--cp-code-bg);
+  border: 1px solid var(--cp-border);
+  border-radius: 10px;
+  margin: 8px 0;
+  overflow: hidden;
+}
+
+.cp-code-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 10px;
+  font-size: 10.5px;
+  color: var(--cp-muted);
+  border-bottom: 1px solid var(--cp-border);
+}
+
+.cp-copy {
+  border: none;
+  background: transparent;
+  color: var(--cp-muted);
+  cursor: pointer;
+  font-size: 10.5px;
+}
+
+.cp-copy:hover {
+  color: var(--cp-text);
+}
+
+.cp-code pre {
+  margin: 0;
+  padding: 10px;
+  overflow-x: auto;
+}
+
+.cp-code code {
+  background: transparent;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre;
+}
+
+.cp-task {
+  color: var(--cp-muted);
+}
+
+.cp-task.done {
+  color: var(--cp-accent);
+}
+
+/* ------------------------------- 状态 / 操作 ------------------------------- */
+
+.cp-typing {
+  display: inline-flex;
+  gap: 3px;
+  padding: 4px 0;
+}
+
+.cp-typing i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--cp-muted);
+  animation: cp-blink 1.2s infinite ease-in-out;
+}
+
+.cp-typing i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.cp-typing i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes cp-blink {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+.cp-error {
+  margin-top: 6px;
+  background: var(--cp-danger-soft);
+  border: 1px solid var(--cp-danger);
+  color: var(--cp-danger);
+  border-radius: 8px;
+  padding: 6px 9px;
+  font-size: 12px;
+  display: flex;
+  gap: 6px;
+}
+
+.cp-error span {
+  word-break: break-word;
+}
+
+.cp-sources {
+  margin-top: 6px;
+  font-size: 10.5px;
+  color: var(--cp-muted);
+}
+
+.cp-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+  opacity: 0.5;
+  transition: opacity 0.15s ease;
+}
+
+.cp-msg:hover .cp-actions {
+  opacity: 1;
+}
+
+/* 深色模式下浅紫底 + 白字对比不足，换成深色字 */
+[data-theme="dark"] .cp-send,
+[data-theme="dark"] .cp-cta {
+  color: #14151a;
+}
+
+[data-theme="dark"] .cp-bubble {
+  background: #2b3550;
+  color: #e9ecf5;
+}
+
+.cp-actions button {
+  border: 1px solid var(--cp-border);
+  background: var(--cp-bg);
+  color: var(--cp-muted);
+  border-radius: 7px;
+  font-size: 11px;
+  padding: 2px 7px;
+  cursor: pointer;
+}
+
+.cp-actions button:hover {
+  color: var(--cp-text);
+  border-color: var(--cp-border-strong);
+}
+
+.cp-cta-row {
+  margin-top: 8px;
+}
+
+.cp-cta {
+  border: none;
+  background: var(--cp-accent);
+  color: #fff;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* ------------------------------- 工具条 / 输入 ------------------------------- */
+
+.cp-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 0;
+  flex: 0 0 auto;
+}
+
+.cp-select,
+.cp-ghost {
+  border: 1px solid var(--cp-border);
+  background: var(--cp-bg);
+  color: var(--cp-muted);
+  border-radius: 7px;
+  font-size: 11.5px;
+  padding: 3px 7px;
+  cursor: pointer;
+}
+
+.cp-select:focus,
+.cp-ghost:hover {
+  color: var(--cp-text);
+  border-color: var(--cp-border-strong);
+  outline: none;
+}
+
+.cp-bar-spacer {
+  flex: 1 1 auto;
+}
+
+.cp-hint {
+  font-size: 10.5px;
+  color: var(--cp-muted);
+}
+
+.cp-compose {
+  padding: 8px 12px 12px;
+  flex: 0 0 auto;
+}
+
+.cp-compose textarea {
+  width: 100%;
+  resize: none;
+  border: 1px solid var(--cp-border-strong);
+  border-radius: 10px;
+  background: var(--cp-bg);
+  color: var(--cp-text);
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.55;
+  outline: none;
+  min-height: 38px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.cp-compose textarea:focus {
+  border-color: var(--cp-accent);
+  box-shadow: 0 0 0 3px var(--cp-accent-soft);
+}
+
+.cp-compose-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.cp-status {
+  flex: 1 1 auto;
+  font-size: 10.5px;
+  color: var(--cp-muted);
+}
+
+.cp-send {
+  border: none;
+  background: var(--cp-accent);
+  color: #fff;
+  border-radius: 8px;
+  padding: 6px 16px;
+  font-size: 12.5px;
+  font-weight: 550;
+  cursor: pointer;
+}
+
+.cp-send:hover {
+  filter: brightness(1.05);
+}
+
+.cp-send.busy {
+  background: var(--cp-danger);
+}
+
+/* ------------------------------- 浮层 ------------------------------- */
+
+.cp-pop {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 78px;
+  max-height: 260px;
+  overflow-y: auto;
+  background: var(--cp-bg-elev);
+  border: 1px solid var(--cp-border-strong);
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.18);
+  padding: 6px;
+  z-index: 20;
+}
+
+.cp-pop[hidden] {
+  display: none;
+}
+
+.cp-prompt-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.cp-prompt-item:hover {
+  background: var(--cp-accent-soft);
+}
+
+.cp-prompt-label {
+  font-size: 12.5px;
+}
+
+.cp-prompt-desc {
+  font-size: 10.5px;
+  color: var(--cp-muted);
+}
+
+.cp-page-pop {
+  top: 92px;
+  bottom: auto;
+  padding: 8px;
+}
+
+.cp-page-pop input {
+  width: 100%;
+  border: 1px solid var(--cp-border-strong);
+  border-radius: 7px;
+  background: var(--cp-bg);
+  color: var(--cp-text);
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 12.5px;
+  outline: none;
+  margin-bottom: 6px;
+}
+
+.cp-page-item {
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cp-page-item:hover {
+  background: var(--cp-accent-soft);
+}
+
+.cp-empty {
+  color: var(--cp-muted);
+  font-size: 12px;
+  padding: 8px;
+  text-align: center;
+}
+
+/* ------------------------------- 思考过程（deepseek-reasoner） ------------------------------- */
+
+.cp-think-badge {
+  font-size: 11px;
+  color: var(--cp-muted);
+  margin-bottom: 6px;
+}
+
+.cp-think {
+  margin: 0 0 8px;
+  border: 1px dashed var(--cp-border-strong);
+  border-radius: 8px;
+  padding: 6px 9px;
+  background: var(--cp-bg-soft);
+}
+
+.cp-think summary {
+  cursor: pointer;
+  font-size: 11.5px;
+  color: var(--cp-muted);
+  outline: none;
+}
+
+.cp-think pre {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--cp-muted);
+  max-height: 240px;
+  overflow: auto;
+  font-family: inherit;
+}
+
+/* ------------------------------- @ 引用选择器 ------------------------------- */
+
+.cp-mention {
+  bottom: 84px;
+  padding: 0;
+}
+
+.cp-mention-head {
+  font-size: 10.5px;
+  color: var(--cp-muted);
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--cp-border);
+}
+
+.cp-mention-list {
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.cp-mention-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.cp-mention-item.active,
+.cp-mention-item:hover {
+  background: var(--cp-accent-soft);
+}
+
+.cp-mk {
+  flex: 0 0 auto;
+  font-size: 9.5px;
+  line-height: 1.6;
+  padding: 0 5px;
+  border-radius: 4px;
+  border: 1px solid var(--cp-border);
+  color: var(--cp-muted);
+}
+
+.cp-mk.page {
+  color: var(--cp-accent);
+  border-color: var(--cp-accent);
+}
+
+.cp-mention-text {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cp-mention-page {
+  margin-left: 6px;
+  font-size: 10px;
+  color: var(--cp-muted);
+}
+
+/* 滚动条 */
+.cp-msgs::-webkit-scrollbar,
+.cp-pop::-webkit-scrollbar,
+.cp-compose textarea::-webkit-scrollbar {
+  width: 8px;
+}
+
+.cp-msgs::-webkit-scrollbar-thumb,
+.cp-pop::-webkit-scrollbar-thumb,
+.cp-compose textarea::-webkit-scrollbar-thumb {
+  background: var(--cp-border-strong);
+  border-radius: 8px;
+}
+
+.cp-msgs::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ------------------------------- 工具卡片（AI 动手前先确认） ------------------------------- */
+
+.cp-tool-card {
+  border: 1px solid var(--cp-border-strong);
+  border-radius: 10px;
+  background: var(--cp-bg-soft);
+  padding: 8px 10px;
+}
+
+.cp-tool-head {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.cp-tool-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cp-tool-item {
+  display: flex;
+  gap: 7px;
+  align-items: flex-start;
+  font-size: 12px;
+}
+
+.cp-tool-state {
+  flex: 0 0 auto;
+  width: 14px;
+  text-align: center;
+  color: var(--cp-muted);
+  font-weight: 700;
+}
+
+.cp-tool-item.ok .cp-tool-state {
+  color: #16a34a;
+}
+
+.cp-tool-item.fail .cp-tool-state {
+  color: var(--cp-danger);
+}
+
+.cp-tool-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.cp-tool-name {
+  font-weight: 600;
+}
+
+.cp-tool-danger {
+  margin-left: 5px;
+  font-size: 10px;
+  color: var(--cp-danger);
+  border: 1px solid var(--cp-danger);
+  border-radius: 4px;
+  padding: 0 3px;
+}
+
+.cp-tool-prev {
+  color: var(--cp-muted);
+  white-space: normal;
+  word-break: break-word;
+}
+
+.cp-tool-result {
+  margin-top: 2px;
+  font-size: 11.5px;
+  opacity: 0.85;
+}
+
+.cp-tool-item.fail .cp-tool-result {
+  color: var(--cp-danger);
+}
+
+.cp-tool-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.cp-tool-actions button {
+  border-radius: 7px;
+  font-size: 12px;
+  padding: 4px 12px;
+  cursor: pointer;
+  border: 1px solid var(--cp-border-strong);
+  background: var(--cp-bg);
+  color: var(--cp-text);
+}
+
+.cp-tool-apply {
+  background: var(--cp-accent);
+  border-color: transparent;
+  color: #fff;
+}
+
+.cp-tool-apply:hover {
+  filter: brightness(1.08);
+}
+
+.cp-tool-cancel:hover {
+  color: var(--cp-danger);
+  border-color: var(--cp-danger);
+}
+
+/* ------------------------------- 历史会话（图谱里的会话文件） ------------------------------- */
+
+.cp-sess-pop {
+  top: 92px;
+  bottom: auto;
+  padding: 6px;
+  max-height: 320px;
+}
+
+.cp-sess-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--cp-muted);
+  padding: 2px 4px 6px;
+  border-bottom: 1px solid var(--cp-border);
+}
+
+.cp-sess-dir {
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.75;
+}
+
+.cp-sess-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 24px 6px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.cp-sess-item:hover,
+.cp-sess-item.active {
+  background: var(--cp-accent-soft);
+}
+
+.cp-sess-title {
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cp-sess-meta {
+  font-size: 10.5px;
+  color: var(--cp-muted);
+}
+
+.cp-sess-del {
+  position: absolute;
+  right: 4px;
+  top: 8px;
+  border: none;
+  background: transparent;
+  color: var(--cp-muted);
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.cp-sess-del:hover {
+  color: var(--cp-danger);
+}
+
+.cp-chip.ws {
+  cursor: default;
+  border-style: dashed;
+  color: var(--cp-muted);
+}
+
+#cp-tools.on {
+  color: var(--cp-accent);
+  border-color: var(--cp-accent);
+}
+
+#cp-tools.off {
+  opacity: 0.55;
+}
+
+/* 本会话内不再询问（确认卡片里的小勾选） */
+.cp-tool-remember {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--cp-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.cp-tool-remember input {
+  margin: 0;
+  accent-color: var(--cp-accent);
+  cursor: pointer;
+}
+
+.cp-tool-remember:hover {
+  color: var(--cp-text);
+}
+
+.cp-tool-allowed {
+  margin-left: 5px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--cp-accent);
+  border: 1px solid var(--cp-accent);
+  border-radius: 4px;
+  padding: 0 3px;
+  opacity: 0.85;
+}
+
+.cp-tool-actions {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}

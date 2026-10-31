@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Logseq Akyuu</title>
+    <link rel="stylesheet" href="src/styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@logseq/libs"></script>
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <!-- 经典脚本，按顺序加载；每个文件把自己挂到 window.CP 上 -->
+    <script src="src/md.js"></script>
+    <script src="src/store.js"></script>
+    <script src="src/llm.js"></script>
+    <script src="src/retrieval.js"></script>
+    <script src="src/context.js"></script>
+    <script src="src/tools.js"></script>
+    <script src="src/workspace.js"></script>
+    <script src="src/agent.js"></script>
+    <script src="src/panel.js"></script>
+    <script src="src/selfcheck.js"></script>
+    <script src="src/main.js"></script>
+  </body>
+</html>

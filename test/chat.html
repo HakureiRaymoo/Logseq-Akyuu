@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>chat test</title>
+    <link rel="stylesheet" href="../src/styles.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <script>
+      window.__errors = [];
+      window.addEventListener("error", (e) => window.__errors.push(e.message));
+      window.addEventListener("unhandledrejection", (e) =>
+        window.__errors.push("rejection: " + (e.reason && (e.reason.stack || e.reason.message || e.reason)))
+      );
+
+      if (new URLSearchParams(location.search).get("theme")) {
+        document.documentElement.setAttribute("data-theme", new URLSearchParams(location.search).get("theme"));
+      }
+
+      function memStorage() {
+        window.__files = window.__files || {};
+        return {
+          getItem: async (k) => (k in window.__files ? window.__files[k] : null),
+          setItem: async (k, v) => {
+            window.__files[k] = v;
+            return true;
+          },
+          removeItem: async (k) => {
+            delete window.__files[k];
+          },
+          allKeys: async () => Object.keys(window.__files),
+        };
+      }
+
+      window.logseq = {
+        settings: {
+          provider: "openai",
+          apiKey: "sk-test",
+          model: "gpt-4o-mini",
+          language: "zh",
+          smartContext: true,
+          historyTurns: 4,
+          enableTools: true,
+          toolPolicy: "confirm",
+        },
+        useSettingsSchema: () => {},
+        updateSettings: (patch) => Object.assign(window.logseq.settings, patch),
+        onSettingsChanged: () => {},
+        provideStyle: () => {},
+        provideModel: () => {},
+        provideUI: () => {},
+        showMainUI: () => {},
+        hideMainUI: () => {},
+        setMainUIInlineStyle: (s) => {
+          window.__styles = (window.__styles || []).concat(s);
+        },
+        showSettingsUI: () => {},
+        Editor: {
+          getCurrentPage: async () => ({ name: "测试页面" }),
+          getCurrentBlock: async () => ({ uuid: "b1", content: "测试块内容" }),
+          getSelectedBlocks: async () => [{ uuid: "s1", content: "被选中的内容" }],
+          getAllPages: async () => [{ name: "测试页面" }],
+          getPageBlocksTree: async () => [
+            { content: "页面根块", children: [{ content: "子块内容" }] },
+          ],
+          getBlock: async () => ({
+            uuid: "b1",
+            content: (window.__updates || []).slice(-1)[0] || "测试块内容",
+          }),
+          insertBlock: async (uuid, content) => {
+            window.__inserts = (window.__inserts || []).concat({ uuid: uuid, content: content });
+            return { uuid: "new-block" };
+          },
+          appendBlockInPage: async (page, content) => {
+            window.__inserts = (window.__inserts || []).concat({ uuid: "new-block", content: content });
+            return { uuid: "new-block" };
+          },
+          updateBlock: async (uuid, content) => {
+            window.__updates = (window.__updates || []).concat(content);
+          },
+          createPage: async (name) => {
+            window.__createdPages = (window.__createdPages || []).concat(name);
+            return { name: name };
+          },
+            deletePage: async () => {},
+          getPage: async () => null,
+          removeBlock: async (uuid) => {
+            window.__removed = (window.__removed || []).concat(uuid);
+          },
+          moveBlock: async () => {},
+          registerSlashCommand: () => {},
+          registerBlockContextMenuItem: () => {},
+          registerHighlightContextMenuItem: () => {},
+        },
+        App: {
+          getUserConfigs: async () => ({ preferredThemeMode: "light" }),
+          onThemeModeChanged: () => {},
+          registerCommandPalette: (opts, fn) => {
+            window.__palette = window.__palette || {};
+            window.__palette[opts.key] = fn;
+          },
+          registerPageMenuItem: () => {},
+          getCurrentGraph: async () => ({ name: "测试图谱", path: "D:\\notes\\test" }),
+        },
+        DB: {
+          datascriptQuery: async (query) => {
+            window.__queries = (window.__queries || []).concat(query.split("\n")[0]);
+            if (query.indexOf("(count ?b)") >= 0) return [[42]];
+            if (query.indexOf("(count ?p)") >= 0) return [[12]];
+            if (query.indexOf(":block/content") >= 0) {
+              return [
+                ["u-1", "发布会延期到周四，真正的风险是排期", "项目复盘"],
+                ["u-2", "缓存雪崩预案：随机过期时间 + 降级", "后端笔记"],
+              ];
+            }
+            return [["项目复盘"]];
+          },
+        },
+        UI: { showMsg: (m) => (window.__toasts = (window.__toasts || []).concat(m)) },
+        Assets: { makeSandboxStorage: async () => memStorage() },
+        FileStorage: memStorage(),
+        ready: (fn) => Promise.resolve().then(fn),
+      };
+
+      // 假 fetch：返回 SSE，验证流式解析 + 增量渲染 + 原生 tool_calls 解析
+      const chunks = [
+        'data: {"choices":[{"delta":{"reasoning_content":"先看上下文…"}}]}\n\n',
+        'data: {"choices":[{"delta":{"content":"你好，"}}]}\n\n',
+        'data: {"choices":[{"delta":{"content":"这是**流式**回答。"}}]}\n\n',
+        "data: [DONE]\n\n",
+      ];
+
+      // 工具调用：参数故意拆成两段，验证增量拼接
+      const toolCallChunks = [
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"insert_block","arguments":"{\\"content\\":\\"由 Akyuu 写入的测试块\\",\\"mode\\":\\"page-end\\""}}]}}]}\n\n',
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":",\\"page\\":\\"current\\"}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":10,"completion_tokens":5}}\n\n',
+        "data: [DONE]\n\n",
+      ];
+
+      const afterToolChunks = [
+        'data: {"choices":[{"delta":{"content":"已经插入好了 ✅"}}]}\n\n',
+        "data: [DONE]\n\n",
+      ];
+
+      // 文本协议：不支持 tools 的模型（deepseek-reasoner / Anthropic）直接输出 ```akyuu 代码块
+      // 文本协议：参数直接摊在顶层（弱模型常见写法），顺带验证摊平逻辑
+      const actionText =
+        '好的，我来写。\n```akyuu\n{"tool":"insert_block","content":"文本协议写入的块","mode":"page-end"}\n```';
+      const textProtoChunks = [
+        "data: " + JSON.stringify({ choices: [{ delta: { content: actionText } }] }) + "\n\n",
+        "data: [DONE]\n\n",
+      ];
+      const textProtoAfterChunks = [
+        "data: " + JSON.stringify({ choices: [{ delta: { content: "已写入 ✅" } }] }) + "\n\n",
+        "data: [DONE]\n\n",
+      ];
+
+      // 线上问题的回归用例：网关把 arguments 直接给成对象（不是 JSON 字符串）
+      const objArgsChunks = [
+        "data: " +
+          JSON.stringify({
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: "call_obj",
+                      type: "function",
+                      function: { name: "create_page", arguments: { name: "对象参数测试页", blocks: ["A", "  B"] } },
+                    },
+                  ],
+                },
+              },
+            ],
+          }) +
+          "\n\n",
+        "data: " + JSON.stringify({ choices: [{ delta: {}, finish_reason: "tool_calls" }] }) + "\n\n",
+        "data: [DONE]\n\n",
+      ];
+
+      function sse(list) {
+        const enc = new TextEncoder();
+        let i = 0;
+        return {
+          ok: true,
+          status: 200,
+          body: new ReadableStream({
+            pull(controller) {
+              if (i < list.length) controller.enqueue(enc.encode(list[i++]));
+              else controller.close();
+            },
+          }),
+        };
+      }
+
+      window.__request = null;
+      window.fetch = async (url, opts) => {
+        const body = JSON.parse(opts.body);
+        window.__requests = (window.__requests || []).concat({ url: url, opts: opts, body: body });
+        window.__request = window.__requests[window.__requests.length - 1];
+
+        // 查询扩展请求（非流式）：返回一个 JSON 扩展结果
+        if (!body.stream) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              choices: [
+                {
+                  message: {
+                    content:
+                      '{"terms":["项目复盘","排期","缓存"],"queries":["这一页讲的主要风险是什么","季度复盘里提到的排期问题"]}',
+                  },
+                },
+              ],
+            }),
+          };
+        }
+
+        const msgs = body.messages || [];
+        // 只看对话消息，且用「最后一条 user」判断意图：历史里还留着上一轮的标记词
+        const convo = msgs.filter((m) => m.role !== "system");
+        const lastUser = (convo.filter((m) => m.role === "user").pop() || {}).content || "";
+        const hasToolResult = convo.some((m) => m.role === "tool");
+        const hasTextProtoResult = /<tool_results>/.test(lastUser);
+
+        // 文本协议第二轮：拿到 <tool_results> 后给最终回答
+        if (hasTextProtoResult) {
+          window.__textProtoAfter = window.__requests.length - 1;
+          return sse(textProtoAfterChunks);
+        }
+        // 文本协议第一轮：模型自己吐 ```akyuu 代码块（这条路径不该带 tools 参数）
+        if (!body.tools && /文本协议写入/.test(lastUser)) {
+          window.__textProtoRequest = window.__requests.length - 1;
+          return sse(textProtoChunks);
+        }
+
+        if (!!body.tools && !hasToolResult && /对象参数/.test(lastUser)) {
+          window.__objArgsRequest = window.__requests.length - 1;
+          return sse(objArgsChunks);
+        }
+        const wantsTool = !!body.tools && !hasToolResult && /请把这句话插到下面/.test(lastUser);
+        if (wantsTool) {
+          window.__toolRequest = window.__requests.length - 1;
+          return sse(toolCallChunks);
+        }
+        if (hasToolResult) {
+          window.__afterToolRequest = window.__requests.length - 1;
+          return sse(afterToolChunks);
+        }
+
+        // 普通对话请求（流式）
+        return sse(chunks);
+      };
+    </script>
+
+    <script src="../src/md.js"></script>
+    <script src="../src/store.js"></script>
+    <script src="../src/llm.js"></script>
+    <script src="../src/retrieval.js"></script>
+    <script src="../src/context.js"></script>
+    <script src="../src/tools.js"></script>
+    <script src="../src/workspace.js"></script>
+    <script src="../src/agent.js"></script>
+    <script src="../src/panel.js"></script>
+    <script src="../src/selfcheck.js"></script>
+    <script src="../src/main.js"></script>
+
+    <script>
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      (async () => {
+        await sleep(150); // 等 main() 启动完成
+        await CP.panel.send("帮我解释一下这个块");
+        await sleep(300);
+
+        // 再验证「快捷改写 → 直接写回块」这条链路
+        const polish = window.__palette && window.__palette["akyuu-polish"];
+        if (polish) await polish();
+        await sleep(400);
+
+        // @ 引用：输入 @ + 关键词 → 弹出选择器 → 选中第一项（页面 / 块各测一次）
+        const input = document.querySelector("#cp-input");
+        async function tryMention(text) {
+          input.focus();
+          input.value = text;
+          input.setSelectionRange(input.value.length, input.value.length);
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          await sleep(450);
+          const open = !document.querySelector("#cp-mention").hidden;
+          const items = document.querySelectorAll("#cp-mention .cp-mention-item").length;
+          const first = document.querySelector("#cp-mention .cp-mention-item");
+          if (first) first.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+          await sleep(60);
+          return { open: open, items: items, value: input.value };
+        }
+        const pageMention = await tryMention("看看 @测试");
+        const blockMention = await tryMention("看看 @项目");
+
+        // 块引用进入上下文：((uuid)) → <pinned_blocks>
+        const refCtx = await CP.ctx.build({
+          question: "看看 ((11111111-1111-1111-1111-111111111111))",
+          mode: "chat",
+          pinned: [],
+          usePage: false,
+          useBlock: false,
+        });
+
+
+
+        const st = CP.panel.state;
+        const assistant = st.messages.filter((m) => m.role === "assistant").pop() || {};
+        const dom = document.querySelector('.cp-msg.assistant .cp-md');
+        const snapshot = {
+          messageCount: st.messages.length,
+          userText: (st.messages.find((m) => m.role === "user") || {}).content,
+          assistantText: assistant.content,
+          error: assistant.error || null,
+          sources: assistant.sources || [],
+          hasMarkdownBold: !!(dom && dom.querySelector("strong")),
+          sourcesLine: (document.querySelector(".cp-sources") || {}).textContent || "",
+          reasoningCaptured: assistant.reasoning === "先看上下文…",
+          reasoningNotInAnswer: !String(assistant.content).includes("先看上下文"),
+          thinkRendered: !!document.querySelector(".cp-think"),
+          actionFinalBefore: (window.__updates || []).slice(-1)[0] || null,
+          actionUpdatesBefore: (window.__updates || []).length,
+        };
+
+        const reqs = window.__requests || [];
+        const expandReq = reqs[0] || { body: { messages: [{ content: "" }] } };
+        const chatReq = reqs[1] || { body: { messages: [{ content: "" }] } };
+        const actionReq = reqs[2];
+        const sys = (chatReq.body.messages[0] || {}).content || "";
+        const userMsg = (chatReq.body.messages[chatReq.body.messages.length - 1] || {}).content || "";
+        // 头部按钮 + 快捷键（这两个之前是坏的：按钮没绑事件、iframe 内收不到宿主快捷键）
+        const clicks = { settings: 0, hide: 0, show: 0 };
+        window.logseq.showSettingsUI = () => clicks.settings++;
+        window.logseq.hideMainUI = () => clicks.hide++;
+        window.logseq.showMainUI = () => clicks.show++;
+        const messagesBefore = CP.panel.state.messages.length;
+
+        document.querySelector('.cp-head [data-act="gear"]').click();
+        document.querySelector('.cp-head [data-act="close"]').click();
+        const closedByButton = clicks.hide === 1 && CP.panel.state.open === false;
+
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: "J", ctrlKey: true, shiftKey: true }));
+        const openedByShortcut = clicks.show === 1 && CP.panel.state.open === true;
+
+        // 拖动标题栏移动
+        const headEl = document.querySelector(".cp-head");
+        headEl.dispatchEvent(new PointerEvent("pointerdown", { screenX: 800, screenY: 300, button: 0, pointerId: 7, bubbles: true }));
+        headEl.dispatchEvent(new PointerEvent("pointermove", { screenX: 700, screenY: 360, pointerId: 7, bubbles: true }));
+        headEl.dispatchEvent(new PointerEvent("pointerup", { screenX: 700, screenY: 360, pointerId: 7, bubbles: true }));
+        await sleep(80);
+        const dragged = (window.__styles || []).slice(-1)[0] || {};
+        const dragMoved = dragged.top === "116px" && dragged.right === "120px";
+
+        // 拖左边缘改宽
+        const rx = document.querySelector(".cp-resize-x");
+        rx.dispatchEvent(new PointerEvent("pointerdown", { screenX: 500, screenY: 400, button: 0, pointerId: 8, bubbles: true }));
+        rx.dispatchEvent(new PointerEvent("pointermove", { screenX: 450, screenY: 400, pointerId: 8, bubbles: true }));
+        rx.dispatchEvent(new PointerEvent("pointerup", { screenX: 450, screenY: 400, pointerId: 8, bubbles: true }));
+        await sleep(80);
+        const resized = (window.__styles || []).slice(-1)[0] || {};
+        const resizeWidened = resized.width === "510px";
+
+        // 双击标题栏复位
+        headEl.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+        await sleep(50);
+        const reset = (window.__styles || []).slice(-1)[0] || {};
+        const geomReset = reset.top === "56px" && reset.width === "460px";
+        await sleep(320);
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: "J", ctrlKey: true, shiftKey: true }));
+        const closedByShortcut = clicks.hide === 2 && CP.panel.state.open === false;
+
+        document.querySelector('.cp-head [data-act="new"]').click();
+        await sleep(150); // newChat 现在先落盘再清空，是异步的
+        const newChatCleared = CP.panel.state.messages.length <= 1;
+
+        // ---- 工具调用全链路：模型要求插块 → 确认卡片 → 点「应用」 → 执行 → 二轮总结 ----
+        const insertsBefore = (window.__inserts || []).length;
+        const pendingTool = CP.panel.send("请把这句话插到下面：测试工具链路");
+        await sleep(500);
+        const toolCard = document.querySelector(".cp-tool-card");
+        const toolCardPending = !!toolCard && /需要你确认/.test(toolCard.textContent);
+        const toolCardName = toolCard ? (toolCard.querySelector(".cp-tool-name") || {}).textContent : "";
+        const toolCardPreview = toolCard ? (toolCard.querySelector(".cp-tool-prev") || {}).textContent : "";
+        const insertBeforeApply = (window.__inserts || []).length;
+        const allowBox = document.querySelector('.cp-msg .cp-tool-card input[data-allow]');
+        if (allowBox) allowBox.checked = true; // 勾上「本会话内不再询问这类操作」
+        const applyBtn = document.querySelector('[data-msg-act="apply-tools"]');
+        if (applyBtn) applyBtn.click();
+        await pendingTool;
+        await sleep(200);
+        const allowRemembered = CP.panel.state.toolAllow.insert_block === true;
+
+        // ---- 第二次同样的操作：本会话已允许 → 不再弹确认，直接执行 ----
+        const insertsBeforeAuto = (window.__inserts || []).length;
+        const autoPromise = CP.panel.send("请把这句话插到下面：测试工具链路");
+        await sleep(500);
+        const autoShowsConfirm = !!document.querySelector('[data-msg-act="apply-tools"]');
+        await autoPromise;
+        await sleep(200);
+        const autoInserted = (window.__inserts || []).length > insertsBeforeAuto;
+        const insertedByTool = (window.__inserts || []).filter((x) => /由 Akyuu 写入的测试块/.test(x.content));
+        const toolCardDone = !!document.querySelector(".cp-tool-item.ok");
+        const afterToolText = CP.panel.state.messages.map((m) => m.content || "").join("\n");
+        const toolRequest = (window.__requests || [])[window.__toolRequest] || { body: {} };
+        const afterToolReq = (window.__requests || [])[window.__afterToolRequest] || { body: { messages: [] } };
+
+        // ---- 文本协议：换成 deepseek-reasoner（不支持原生 tools，也不吃 temperature）再走一遍 ----
+        CP.panel.state.toolAllow = {}; // 模拟新会话：确认卡片要重新问
+        window.logseq.settings.provider = "deepseek";
+        window.logseq.settings.model = "deepseek-reasoner";
+        const textProtoPromise = CP.panel.send("请把「文本协议写入」插到当前页");
+        await sleep(700);
+        const textProtoCards = document.querySelectorAll(".cp-tool-card").length;
+        const textProtoApply = Array.prototype.slice
+          .call(document.querySelectorAll('[data-msg-act="apply-tools"]'))
+          .pop();
+        if (textProtoApply) textProtoApply.click();
+        await textProtoPromise;
+        await sleep(250);
+        const textProtoInserted = (window.__inserts || []).some((x) => /文本协议写入的块/.test(x.content));
+        const textProtoReq = (window.__requests || [])[window.__textProtoRequest] || { body: { messages: [] } };
+        const textProtoAfterReq = (window.__requests || [])[window.__textProtoAfter] || { body: { messages: [] } };
+        const textProtoSystem = ((textProtoReq.body.messages || [])[0] || {}).content || "";
+        const textProtoMsgText = (CP.panel.state.messages || []).map((m) => m.content || "").join("\n");
+
+        // ---- 回归：网关把 arguments 直接给成对象，create_page 仍然拿到 name ----
+        window.logseq.settings.provider = "openai";
+        window.logseq.settings.model = "gpt-4o-mini";
+        const objArgsPromise = CP.panel.send("请用对象参数建页：对象参数测试页");
+        await sleep(600);
+        const objArgsHasCard = !!document.querySelector('[data-msg-act="apply-tools"]');
+        const objArgsCard = Array.prototype.slice.call(document.querySelectorAll(".cp-tool-card")).pop();
+        const objArgsPreview = (objArgsCard && objArgsCard.querySelector(".cp-tool-prev") || {}).textContent || "";
+        const objApply = Array.prototype.slice
+          .call(document.querySelectorAll('[data-msg-act="apply-tools"]'))
+          .pop();
+        if (objApply) objApply.click();
+        await objArgsPromise;
+        await sleep(250);
+        const objArgsCreated = (window.__createdPages || []).indexOf("对象参数测试页") >= 0;
+        const objArgsSecondRound = (CP.panel.state.messages || []).map((m) => m.content || "").join("\n");
+
+        // ---- 工作区：会话是否真的写进「图谱目录」（这里是假的 assets 存储） ----
+        const savedSession = await CP.ws.saveSession({
+          id: "test-session-1",
+          title: "工作区测试",
+          messages: [
+            { role: "user", content: "hi" },
+            { role: "assistant", content: "yo" },
+          ],
+        });
+        const fileKeys = Object.keys(window.__files || {});
+        const sessionList = await CP.ws.listSessions();
+        const loadedSession = await CP.ws.loadSession("test-session-1");
+        const mdKey = fileKeys.filter((k) => /test-session-1\.md$/.test(k))[0] || "";
+        const mdFile = String((window.__files || {})[mdKey] || "");
+        const wsFolder = await CP.ws.folder();
+
+        // ---- 主题：跟随白天/暗夜 + 强制外观 ----
+        await sleep(120);
+        const themeFollow = document.documentElement.getAttribute("data-theme");
+        window.logseq.settings.appearance = "dark";
+        CP.panel.refreshSettings();
+        await sleep(150);
+        const themeForcedDark = document.documentElement.getAttribute("data-theme");
+        window.logseq.settings.appearance = "follow";
+        CP.panel.refreshSettings();
+        await sleep(150);
+        const themeBackToFollow = document.documentElement.getAttribute("data-theme");
+        const themeInfo = CP.panel.themeInfo();
+
+        await sleep(50);
+        // 自检：完整跑一遍读/检索/写回/模型连通，并检查报告结论
+        const selfcheck = await CP.selfcheck.run();
+        const reportHasAllPass = /全部通过/.test(selfcheck.report);
+        const reportRows = (selfcheck.report.match(/^\| .+ \|$/gm) || []).length;
+
+        const summary = Object.assign(snapshot, {
+          selfcheckOk: selfcheck.ok,
+          reportHasAllPass: reportHasAllPass,
+          reportRows: reportRows,
+          requestUrl: chatReq.url,
+          requestModel: chatReq.body.model,
+          expandAskedForJson: /检索查询扩展器/.test((expandReq.body.messages[0] || {}).content || ""),
+          expandMaxTokens: expandReq.body.max_tokens,
+          systemIsStable: !/测试页面/.test(sys) && !/当前时间/.test(sys),
+          userHasContext: /<graph_context>/.test(userMsg) && /<current_page name="测试页面"/.test(userMsg),
+          userHasPinned: /<pinned name="项目复盘"/.test(userMsg),
+          userHasGraphHits: /<graph_hits/.test(userMsg) && /发布会延期到周四/.test(userMsg),
+          graphHitBlocks: (userMsg.match(/- \[[^\]]+\] [^\n]+/g) || []).length,
+          dataScriptQueries: (window.__queries || []).length,
+          actionSawBlockText: !!(actionReq && /测试块内容/.test(JSON.stringify(actionReq.body))),
+          historyRoles: chatReq.body.messages.map((m) => m.role),
+          toasts: window.__toasts || [],
+          actionInsert: (window.__inserts || [])[0] || null,
+          actionFinal: snapshot.actionFinalBefore,
+          actionUpdateCount: snapshot.actionUpdatesBefore,
+          ctxHasBlockRef: /<pinned_blocks>/.test(refCtx.text) && /<block_ref/.test(refCtx.text),
+          pageMention: pageMention,
+          blockMention: blockMention,
+          headGear: clicks.settings === 1,
+          dragMoved: dragMoved,
+          resizeWidened: resizeWidened,
+          geomReset: geomReset,
+          closedByButton: closedByButton,
+          openedByShortcut: openedByShortcut,
+          closedByShortcut: closedByShortcut,
+          newChatCleared: newChatCleared,
+          messagesBefore: messagesBefore,
+          toolCardPending: toolCardPending,
+          toolCardName: toolCardName,
+          toolCardPreview: toolCardPreview,
+          toolNothingBeforeApply: insertBeforeApply === insertsBefore,
+          toolInsertCount: insertedByTool.length,
+          toolInsertContent: (insertedByTool[0] || {}).content || null,
+          toolCardDone: toolCardDone,
+          toolSecondRound: /已经插入好了/.test(afterToolText),
+          toolRequestHasTools: Array.isArray(toolRequest.body.tools) && toolRequest.body.tools.length > 0,
+          toolEchoRoles: afterToolReq.body.messages.map((m) => m.role),
+          textProtoNoTools: !textProtoReq.body.tools,
+          textProtoSystemHasProtocol: /行动协议/.test(textProtoSystem),
+          textProtoMaxTokens: textProtoReq.body.max_tokens,
+          textProtoNoTemperature: textProtoReq.body.temperature === undefined,
+          textProtoCards: textProtoCards,
+          textProtoInserted: textProtoInserted,
+          textProtoStripped: !/```akyuu/.test(textProtoMsgText),
+          textProtoFinal: /已写入/.test(textProtoMsgText),
+          textProtoFlattened: (textProtoAfterReq.body.messages || []).some((m) => /<tool_results>/.test(m.content || "")),
+          wsSaved: !!(savedSession && savedSession.ok),
+          wsStored: savedSession && savedSession.stored,
+          wsFiles: fileKeys.filter((k) => /akyuu-session-/.test(k)),
+          wsSessionCount: sessionList.length,
+          wsLoadedMessages: loadedSession ? loadedSession.messages.length : 0,
+          wsMarkdownHasTitle: /# 工作区测试/.test(mdFile),
+          wsDir: wsFolder.dir,
+          wsBackendKind: wsFolder.kind,
+          allowRemembered: allowRemembered,
+          autoShowsConfirm: autoShowsConfirm,
+          autoInserted: autoInserted,
+          toolAllowKeys: Object.keys(CP.panel.state.toolAllow),
+          themeFollow: themeFollow,
+          themeForcedDark: themeForcedDark,
+          themeBackToFollow: themeBackToFollow,
+          themeSource: themeInfo.source,
+          themeHostReadable: themeInfo.hostReadable,
+          toolsCount: CP.tools.all().length,
+          objArgsHasCard: objArgsHasCard,
+          objArgsPreviewHasName: /对象参数测试页/.test(objArgsPreview),
+          objArgsCreated: objArgsCreated,
+          objArgsSecondRound: /已经插入好了/.test(objArgsSecondRound),
+          errors: window.__errors,
+        });
+        document.title = "CHAT " + JSON.stringify(summary);
+      })().catch((e) => {
+        document.title = "CHAT_FAIL " + (e && (e.stack || e.message));
+      });
+    </script>
+  </body>
+</html>

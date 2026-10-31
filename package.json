@@ -1,0 +1,14 @@
+{
+  "name": "logseq-akyuu",
+  "version": "0.2.1",
+  "description": "Akyuu — an AI assistant for Logseq that can actually edit your graph: tool calling (create/insert/update/move/tag/delete blocks), graph-aware retrieval, and sessions saved inside your graph folder",
+  "main": "index.html",
+  "author": "you",
+  "license": "MIT",
+  "keywords": ["logseq", "logseq-plugin", "akyuu", "ai", "llm", "deepseek", "chatgpt"],
+  "logseq": {
+    "id": "logseq-akyuu",
+    "title": "Logseq Akyuu",
+    "icon": "./icon.png"
+  }
+}
