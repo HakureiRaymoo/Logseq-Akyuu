@@ -76,12 +76,12 @@
       };
 
       const messages = [
-        { id: 1, role: "user", content: "把这次复盘的三个风险写成新页面，顺便给当前块加个标签。" },
+        { id: 1, role: "user", content: "把这次复盘的三个风险写成新页面，设个 status 属性，再给当前块加个标签。" },
         {
           id: 2,
           role: "assistant",
           content:
-            "好，我准备做两个改动 —— **新建**一个风险清单页面，并给当前块加 `#复盘` 标签。确认后我再动手。",
+            "好，我准备做三个改动 —— **新建**风险清单页面、给它设 `status:: 进行中`、再给当前块加 `#复盘` 标签。确认后我再动手。",
         },
         {
           id: 3,
@@ -95,6 +95,11 @@
               title: "新建页面",
               preview:
                 "新建页面《2026 Q3 风险清单》，并写入 3 个块：\n  · 单点依赖：只有一人熟悉发布流程\n  · 风险清单没有 owner\n  · 跨团队依赖导致 2 个里程碑延期",
+            },
+            {
+              name: "set_page_property",
+              title: "设置页面属性",
+              preview: "给页面《2026 Q3 风险清单》设置属性 status:: 进行中",
             },
             {
               name: "add_tags",
@@ -138,7 +143,7 @@
         if (new URLSearchParams(location.search).get("mention")) {
           const input = document.querySelector("#cp-input");
           input.focus();
-          input.value = "@项目";
+          input.value = "@";
           input.setSelectionRange(input.value.length, input.value.length);
           input.dispatchEvent(new Event("input", { bubbles: true }));
         }
